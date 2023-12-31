@@ -4,6 +4,7 @@ import json
 from bs4 import BeautifulSoup
 import aria2p #python3.6 -m pip install aria2p[tui]
 import dbm
+import pyperclip
 
 
 log = logging.getLogger("Main")
@@ -16,8 +17,8 @@ ARIA2_SECRET = ""
 
 def search_url(keywords) -> str:
     params = {
-        "word": keywords,
-        "sort": "viewnum"
+        "word": keywords
+        # "sort": "viewnum"
     }
     headers = {
         "Host": "cdn.btlm.top:65533",
@@ -76,7 +77,7 @@ def already_download(keywords, value) -> bool:
     db = None
     try:
         db = dbm.open("meta.db", "c")
-        return keywords.strip() in db or value.strip() in db.values()
+        return keywords.strip().upper().encode("u8") in db.keys() or value.strip().encode("u8") in db.values()
     finally:
         if db is not None:
             db.close()
@@ -85,23 +86,26 @@ def record_download(keywords, value):
     db = None
     try:
         db = dbm.open("meta.db", "c")
-        db.setdefault(keywords.strip(), value)
+        db.setdefault(keywords.strip().upper(), value)
     finally:
         if db is not None:
             db.close()
     
 
-def download_magnet(magnet: str):
-    aria2 = aria2p.API(
-        aria2p.Client(
-            host=ARIA2_HOST,
-            port=ARIA2_PORT,
-            secret=ARIA2_SECRET
+def download_magnet(magnet: str, dest_type=0):
+    if type == 0:
+        aria2 = aria2p.API(
+            aria2p.Client(
+                host=ARIA2_HOST,
+                port=ARIA2_PORT,
+                secret=ARIA2_SECRET
+            )
         )
-    )
-    aria2.add_magnet(magnet)
+        aria2.add_magnet(magnet)
+    else: #xunlei
+        pyperclip.copy(magnet)
     
-def download(keywords):
+def download(keywords, type):
     urls = search_url(keywords)
     if len(urls) == 0:
         log_error(keywords)
@@ -112,20 +116,38 @@ def download(keywords):
     magnet = select_obj.get(name)
     if already_download(name, magnet):
         log.info("already download file {}, magnet {}".format(name, magnet))
+        return
     else:
         record_download(name, magnet)
     log.info("download {}, url={}".format(name, magnet))
-    download_magnet(magnet)
+    download_magnet(magnet, type)
     
-def download_strs(keywords):
+def download_strs(keywords, type):
     keyword_ary = keywords.split(" ")
     for k in keyword_ary:
         nk = k.strip()
         if nk == "":
             continue
-        download(nk)
+        download(nk, type)
     
+def list_db():
+    try:
+        db = dbm.open("meta.db", "c")
+        for k in db.keys():
+            print("{}-{} ".format(k.decode(), db[k].decode()))
+        input()
+    finally:
+        if db is not None:
+            db.close()
 
 if __name__ == "__main__":
-    print("please enter keywords, split by space.")
-    download_strs(input())
+    print("please enter keywords, split by space. list db for 'R':")
+    keywords = input()
+    if keywords.upper() == "R":
+        list_db()
+        exit()
+    print("please select download type: 0-aria2 1-xunlei:")
+    type = int(input())
+    download_strs(keywords, type)
+    print("done")
+    input()
